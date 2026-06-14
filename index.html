@@ -203,6 +203,39 @@
       .queue-list {
         display: grid;
         gap: 8px;
+        max-height: 640px;
+        overflow: auto;
+        padding-right: 4px;
+      }
+
+      .queue-tools {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .queue-tools input,
+      .queue-tools select {
+        width: 100%;
+      }
+
+      .queue-summary {
+        min-height: 28px;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .show-more {
+        width: 100%;
+        min-height: 40px;
+        margin-top: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--green-dark);
+        font-weight: 900;
       }
 
       .queue-item {
@@ -777,6 +810,7 @@
             <h2>Submissions</h2>
             <span id="batch-count"></span>
           </div>
+          <div id="queue-controls"></div>
           <div class="queue-list" id="queue-list"></div>
 
           <div class="connection-panel">
@@ -886,6 +920,9 @@
       let lastSheetLoadTime = "";
       let hasLoadedLiveSheet = false;
       let isSheetRequestInFlight = false;
+      let queueMode = "latest";
+      let queueSearch = "";
+      let visibleLimit = 30;
 
       function selected() {
         return submissions.find((submission) => submission.id === selectedId) || submissions[0];
@@ -1133,6 +1170,73 @@
         }).format(date);
       }
 
+      function dateValue(value) {
+        const date = new Date(`${value}T12:00:00`);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+
+      function sameDay(first, second) {
+        return (
+          first.getFullYear() === second.getFullYear() &&
+          first.getMonth() === second.getMonth() &&
+          first.getDate() === second.getDate()
+        );
+      }
+
+      function latestWeekendDates() {
+        const dates = submissions
+          .map((submission) => dateValue(submission.gameDate))
+          .filter(Boolean)
+          .sort((a, b) => b.getTime() - a.getTime());
+        const latest = dates[0];
+        if (!latest) return [];
+        const start = new Date(latest);
+        if (latest.getDay() === 0) start.setDate(latest.getDate() - 1);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 1);
+        return [start, end];
+      }
+
+      function isLatestWeekendSubmission(submission) {
+        const dates = latestWeekendDates();
+        if (!dates.length) return true;
+        const date = dateValue(submission.gameDate);
+        if (!date) return false;
+        return dates.some((weekendDate) => sameDay(date, weekendDate));
+      }
+
+      function getVisibleSubmissions() {
+        const search = queueSearch.trim().toLowerCase();
+        let visible = [...submissions];
+        if (queueMode === "latest") {
+          visible = visible.filter(isLatestWeekendSubmission);
+        } else if (queueMode !== "all") {
+          visible = visible.filter((submission) => submission.status === queueMode);
+        }
+        if (search) {
+          visible = visible.filter((submission) => {
+            const haystack = [
+              submission.player,
+              submission.homeTeam,
+              submission.awayTeam,
+              submission.team,
+              submission.opponent,
+              submission.division,
+              submission.ground,
+            ]
+              .join(" ")
+              .toLowerCase();
+            return haystack.includes(search);
+          });
+        }
+        visible.sort((a, b) => {
+          const aDate = dateValue(a.gameDate)?.getTime() ?? 0;
+          const bDate = dateValue(b.gameDate)?.getTime() ?? 0;
+          return bDate - aDate || a.player.localeCompare(b.player);
+        });
+        return visible;
+      }
+
       function toTitleCase(value) {
         return String(value)
           .toLowerCase()
@@ -1229,8 +1333,36 @@
       }
 
       function renderQueue() {
-        document.getElementById("batch-count").textContent = `${submissions.length} this batch`;
-        document.getElementById("queue-list").innerHTML = submissions
+        const visible = getVisibleSubmissions();
+        const limited = visible.slice(0, visibleLimit);
+        const searchWasFocused = document.activeElement?.id === "queue-search";
+        const searchCursor = document.getElementById("queue-search")?.selectionStart ?? queueSearch.length;
+        document.getElementById("batch-count").textContent = `${limited.length} shown`;
+        document.getElementById("queue-controls").innerHTML = `
+            <div class="queue-tools">
+              <select id="queue-mode" aria-label="Submission filter">
+                <option value="latest" ${queueMode === "latest" ? "selected" : ""}>Latest weekend</option>
+                <option value="new" ${queueMode === "new" ? "selected" : ""}>New only</option>
+                <option value="verify" ${queueMode === "verify" ? "selected" : ""}>Needs WCL check</option>
+                <option value="ready" ${queueMode === "ready" ? "selected" : ""}>Ready to post</option>
+                <option value="posted" ${queueMode === "posted" ? "selected" : ""}>Posted</option>
+                <option value="all" ${queueMode === "all" ? "selected" : ""}>All submissions</option>
+              </select>
+              <input id="queue-search" placeholder="Search player, team, division" value="${escapeHtml(queueSearch)}" />
+            </div>
+            <div class="queue-summary" id="queue-summary"></div>
+          `;
+        const summary = document.getElementById("queue-summary");
+        const modeText = {
+          latest: "latest weekend",
+          new: "new submissions",
+          verify: "items needing WCL check",
+          ready: "ready-to-post items",
+          posted: "posted items",
+          all: "all submissions",
+        }[queueMode];
+        summary.textContent = `Showing ${limited.length} of ${visible.length} ${modeText} from ${submissions.length} total rows.`;
+        document.getElementById("queue-list").innerHTML = limited
           .map(
             (submission) => `
               <button class="queue-item ${submission.id === selectedId ? "active" : ""}" data-select="${submission.id}">
@@ -1243,7 +1375,43 @@
               </button>
             `,
           )
-          .join("");
+          .join("") +
+          (visible.length > limited.length
+            ? `<button class="show-more" id="show-more">Show ${Math.min(30, visible.length - limited.length)} more</button>`
+            : "");
+        document.getElementById("queue-mode").addEventListener("change", (event) => {
+          queueMode = event.target.value;
+          visibleLimit = 30;
+          const nextVisible = getVisibleSubmissions();
+          if (nextVisible.length && !nextVisible.some((submission) => submission.id === selectedId)) {
+            selectedId = nextVisible[0].id;
+          }
+          render();
+        });
+        document.getElementById("queue-search").addEventListener("input", (event) => {
+          queueSearch = event.target.value;
+          visibleLimit = 30;
+          const nextVisible = getVisibleSubmissions();
+          let selectionChanged = false;
+          if (nextVisible.length && !nextVisible.some((submission) => submission.id === selectedId)) {
+            selectedId = nextVisible[0].id;
+            selectionChanged = true;
+          }
+          if (selectionChanged) {
+            render();
+          } else {
+            renderQueue();
+          }
+        });
+        if (searchWasFocused) {
+          const searchInput = document.getElementById("queue-search");
+          searchInput.focus();
+          searchInput.setSelectionRange(searchCursor, searchCursor);
+        }
+        document.getElementById("show-more")?.addEventListener("click", () => {
+          visibleLimit += 30;
+          renderQueue();
+        });
         document.querySelectorAll("[data-select]").forEach((button) => {
           button.addEventListener("click", () => {
             selectedId = Number(button.dataset.select);
