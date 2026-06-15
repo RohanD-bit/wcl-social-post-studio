@@ -21,6 +21,49 @@ const QUEUE_MODES = [
   ["all", "All"],
 ];
 
+const DRAFT_STORAGE_KEY = "wcl-social-post-studio:drafts:v1";
+const UI_STORAGE_KEY = "wcl-social-post-studio:ui:v1";
+const EDITABLE_FIELDS = [
+  "status",
+  "template",
+  "gameDate",
+  "ground",
+  "homeTeam",
+  "awayTeam",
+  "division",
+  "player",
+  "team",
+  "opponent",
+  "playerPhotoUrl",
+  "performanceDetails",
+  "homeScore",
+  "awayScore",
+  "result",
+];
+const EDITABLE_GROUPS = {
+  batting: ["runs", "balls", "fours", "sixes", "strikeRate"],
+  bowling: ["wickets", "overs", "runs"],
+};
+
+function loadStoredJson(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const stored = window.localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveStoredJson(key, value) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore storage failures so the app still works in restricted browser modes.
+  }
+}
+
 function mergeDrafts(rows, drafts) {
   return rows.map((row) => {
     const draft = drafts[row.id];
@@ -32,6 +75,29 @@ function mergeDrafts(rows, drafts) {
       bowling: { ...row.bowling, ...draft.bowling },
     };
   });
+}
+
+function buildDraftPatch(base, next) {
+  const patch = {};
+  EDITABLE_FIELDS.forEach((field) => {
+    if ((base?.[field] ?? "") !== (next?.[field] ?? "")) {
+      patch[field] = next?.[field] ?? "";
+    }
+  });
+
+  Object.entries(EDITABLE_GROUPS).forEach(([group, fields]) => {
+    const groupPatch = {};
+    fields.forEach((field) => {
+      if ((base?.[group]?.[field] ?? "") !== (next?.[group]?.[field] ?? "")) {
+        groupPatch[field] = next?.[group]?.[field] ?? "";
+      }
+    });
+    if (Object.keys(groupPatch).length) {
+      patch[group] = groupPatch;
+    }
+  });
+
+  return patch;
 }
 
 function getVisibleRows(rows, mode, search) {
@@ -352,15 +418,19 @@ function PublishKit({ selected, caption, copyCaption }) {
 
 export default function App() {
   const [submissions, setSubmissions] = useState(SAMPLE_SUBMISSIONS);
-  const [drafts, setDrafts] = useState({});
-  const [selectedId, setSelectedId] = useState(SAMPLE_SUBMISSIONS[0].id);
-  const [queueMode, setQueueMode] = useState("latest");
-  const [search, setSearch] = useState("");
+  const [drafts, setDrafts] = useState(() => loadStoredJson(DRAFT_STORAGE_KEY, {}));
+  const [selectedId, setSelectedId] = useState(
+    () => loadStoredJson(UI_STORAGE_KEY, {}).selectedId ?? SAMPLE_SUBMISSIONS[0].id,
+  );
+  const [queueMode, setQueueMode] = useState(() => loadStoredJson(UI_STORAGE_KEY, {}).queueMode ?? "latest");
+  const [search, setSearch] = useState(() => loadStoredJson(UI_STORAGE_KEY, {}).search ?? "");
   const [visibleLimit, setVisibleLimit] = useState(24);
   const [sourceStatus, setSourceStatus] = useState("Loading real submissions from Google Sheets...");
   const [lastChecked, setLastChecked] = useState("");
   const lastSignatureRef = useRef("");
   const fileInputRef = useRef(null);
+  const draftsRef = useRef(drafts);
+  const baseRowsRef = useRef(SAMPLE_SUBMISSIONS);
 
   const visibleRows = useMemo(
     () => getVisibleRows(submissions, queueMode, search),
@@ -374,6 +444,19 @@ export default function App() {
   const caption = useMemo(() => buildCaption(selected), [selected]);
 
   useEffect(() => {
+    draftsRef.current = drafts;
+    saveStoredJson(DRAFT_STORAGE_KEY, drafts);
+  }, [drafts]);
+
+  useEffect(() => {
+    saveStoredJson(UI_STORAGE_KEY, {
+      selectedId,
+      queueMode,
+      search,
+    });
+  }, [selectedId, queueMode, search]);
+
+  useEffect(() => {
     if (visibleRows.length && !visibleRows.some((row) => row.id === selectedId)) {
       setSelectedId(visibleRows[0].id);
     }
@@ -383,7 +466,8 @@ export default function App() {
     if (!quiet) setSourceStatus("Loading Google Sheet...");
     try {
       const rows = await loadGoogleSheet();
-      const merged = mergeDrafts(rows, drafts);
+      baseRowsRef.current = rows;
+      const merged = mergeDrafts(rows, draftsRef.current);
       const signature = JSON.stringify(merged);
       const checked = new Date().toLocaleTimeString([], {
         hour: "numeric",
@@ -409,7 +493,16 @@ export default function App() {
 
   function updateSelected(next) {
     setSubmissions((current) => current.map((row) => (row.id === next.id ? next : row)));
-    setDrafts((current) => ({ ...current, [next.id]: next }));
+    setDrafts((current) => {
+      const base = baseRowsRef.current.find((row) => row.id === next.id) ?? selected;
+      const patch = buildDraftPatch(base, next);
+      if (!Object.keys(patch).length) {
+        const nextDrafts = { ...current };
+        delete nextDrafts[next.id];
+        return nextDrafts;
+      }
+      return { ...current, [next.id]: patch };
+    });
   }
 
   function handleCsv(file) {
@@ -420,7 +513,8 @@ export default function App() {
         setSourceStatus("No usable rows found in that CSV.");
         return;
       }
-      const merged = mergeDrafts(rows, drafts);
+      baseRowsRef.current = rows;
+      const merged = mergeDrafts(rows, draftsRef.current);
       setSubmissions(merged);
       setSelectedId(merged[0].id);
       setSourceStatus(`Loaded ${rows.length} rows from ${file.name}.`);
@@ -479,7 +573,10 @@ export default function App() {
 
       <section className="status-band">
         <span>{sourceStatus}</span>
-        {lastChecked && <strong>Auto-refreshes every 60 seconds</strong>}
+        <div className="status-flags">
+          <strong>Workflow saved in this browser</strong>
+          {lastChecked && <strong>Auto-refreshes every 60 seconds</strong>}
+        </div>
       </section>
 
       <section className="metrics">

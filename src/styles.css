@@ -151,6 +151,13 @@ p {
   white-space: nowrap;
 }
 
+.status-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -707,6 +714,10 @@ p {
   .status-band {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .status-flags {
+    justify-content: flex-start;
   }
 
   .header-actions {
