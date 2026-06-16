@@ -158,6 +158,42 @@ function posterNameStyle(value) {
   return { "--poster-name-size": `${size}px` };
 }
 
+function buildCanvaPackage(submission, caption) {
+  const templateName = TEMPLATE_LABELS[submission.template] ?? "Player of the Match";
+  const battingLine = `${submission.batting.runs || "-"} (${submission.batting.balls || "-"})${
+    submission.batting.fours || submission.batting.sixes
+      ? `, ${submission.batting.fours || "0"}x4, ${submission.batting.sixes || "0"}x6`
+      : ""
+  }${submission.batting.strikeRate ? `, SR ${submission.batting.strikeRate}` : ""}`;
+  const bowlingLine = submission.bowling.wickets
+    ? `${submission.bowling.wickets} wickets, ${submission.bowling.overs || "-"} overs, ${submission.bowling.runs || "-"} runs`
+    : "No bowling details";
+
+  return [
+    `Template: ${templateName}`,
+    `Player of the match caption: ${caption.split("\n")[0] || "Player of the Match"}`,
+    `Post caption:\n${caption}`,
+    "",
+    `Division: ${submission.division || "Division TBD"}`,
+    `Player photo: ${submission.playerPhotoUrl || "Add player photo from Drive"}`,
+    `Player name: ${toTitleCase(submission.player || "Player")}`,
+    `Player team logo: ${submission.team || submission.homeTeam || "Add player team logo"}`,
+    `Performance details: ${submission.performanceDetails || "Add performance details"}`,
+    `Batting: ${battingLine}`,
+    `Bowling: ${bowlingLine}`,
+    "",
+    `Team A: ${submission.homeTeam || "Home team"}`,
+    `Team A logo: Add ${submission.homeTeam || "home team"} logo`,
+    `Team A score: ${submission.homeScore || "Score TBD"}`,
+    `Team B: ${submission.awayTeam || "Away team"}`,
+    `Team B logo: Add ${submission.awayTeam || "away team"} logo`,
+    `Team B score: ${submission.awayScore || "Score TBD"}`,
+    `Result: ${submission.result || "Result pending"}`,
+    `Date: ${formatDate(submission.gameDate)}`,
+    `Venue: ${submission.ground || "Venue TBD"}`,
+  ].join("\n");
+}
+
 function SubmissionList({
   rows,
   visibleRows,
@@ -523,7 +559,7 @@ function PosterPreview({ submission }) {
   );
 }
 
-function PublishKit({ selected, caption, copyCaption }) {
+function PublishKit({ selected, caption, canvaPackage, copyCaption, copyCanvaPackage }) {
   return (
     <aside className="publish-kit">
       <div className="publish-header">
@@ -538,12 +574,14 @@ function PublishKit({ selected, caption, copyCaption }) {
 
       <div className="action-row">
         <button onClick={copyCaption}>Copy caption</button>
+        <button onClick={copyCanvaPackage}>Copy Canva package</button>
         <button className="primary" onClick={() => downloadPostImage(selected)}>
           Download image
         </button>
       </div>
 
       <TextArea label="Suggested caption" value={caption} readOnly />
+      <TextArea label="Canva template package" value={canvaPackage} readOnly />
     </aside>
   );
 }
@@ -578,6 +616,7 @@ export default function App() {
   }, [selectedId, submissions, visibleRows]);
 
   const caption = useMemo(() => buildCaption(selected), [selected]);
+  const canvaPackage = useMemo(() => buildCanvaPackage(selected, caption), [selected, caption]);
   const selectedValidationSignature = useMemo(() => validationSignature(selected), [selected]);
   const selectedValidation = validationResults[selected.id];
   const selectedValidationStale =
@@ -720,11 +759,19 @@ export default function App() {
   }
 
   async function copyCaption() {
+    await copyText(caption);
+  }
+
+  async function copyCanvaPackage() {
+    await copyText(canvaPackage);
+  }
+
+  async function copyText(text) {
     try {
-      await navigator.clipboard.writeText(caption);
+      await navigator.clipboard.writeText(text);
     } catch {
       const helper = document.createElement("textarea");
-      helper.value = caption;
+      helper.value = text;
       document.body.appendChild(helper);
       helper.select();
       document.execCommand("copy");
@@ -816,7 +863,13 @@ export default function App() {
           canValidate={selectedCanValidate}
           validateSelected={() => validateSubmission(selected)}
         />
-        <PublishKit selected={selected} caption={caption} copyCaption={copyCaption} />
+        <PublishKit
+          selected={selected}
+          caption={caption}
+          canvaPackage={canvaPackage}
+          copyCaption={copyCaption}
+          copyCanvaPackage={copyCanvaPackage}
+        />
       </section>
     </main>
   );
