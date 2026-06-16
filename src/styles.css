@@ -621,8 +621,8 @@ p {
 
 .t20-preview {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
-  gap: 12px;
+  grid-template-rows: auto minmax(210px, 1fr) auto auto auto;
+  gap: 14px;
   background: linear-gradient(130deg, #07182e 0%, #12213a 58%, #1f513c 100%);
   color: #ffffff;
   padding: 26px;
@@ -658,13 +658,14 @@ p {
   display: grid;
   grid-template-columns: minmax(0, 1.03fr) minmax(132px, 0.9fr);
   gap: 14px;
-  align-items: end;
+  align-items: center;
   min-height: 0;
+  padding-bottom: 12px;
 }
 
 .t20-hero h3 {
   margin: 0;
-  font-size: 42px;
+  font-size: 38px;
   font-weight: 900;
   line-height: 0.94;
   text-transform: uppercase;
@@ -674,7 +675,7 @@ p {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 214px;
+  min-height: 190px;
   width: 100%;
   max-height: 100%;
   border-radius: 45% 45% 14% 14%;
@@ -699,6 +700,7 @@ p {
   position: relative;
   z-index: 1;
   width: min(100%, 330px);
+  margin-top: 2px;
   transform: skewX(-10deg);
   background: #1995f2;
   padding: 12px 14px;
@@ -955,6 +957,7 @@ p {
   .t20-hero {
     grid-template-columns: minmax(0, 1fr) minmax(104px, 0.72fr);
     gap: 8px;
+    padding-bottom: 8px;
   }
 
   .t20-hero h3 {
