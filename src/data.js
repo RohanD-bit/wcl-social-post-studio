@@ -27,6 +27,7 @@ export const SAMPLE_SUBMISSIONS = [
     team: "Metro CC",
     opponent: "Jamaica CC",
     playerPhotoUrl: "",
+    scorecardUrl: "",
     performanceDetails:
       "54 runs from 41 balls, 1 four, 2 sixes. 2 overs, 11 runs, 1 wicket.",
     batting: {
@@ -58,6 +59,7 @@ export const SAMPLE_SUBMISSIONS = [
     team: "Loudoun United CC",
     opponent: "Mustangs CC",
     playerPhotoUrl: "",
+    scorecardUrl: "",
     performanceDetails:
       "144* from 89 balls with 17 fours and 7 sixes. 6 overs, 46 runs, 2 wickets.",
     batting: {

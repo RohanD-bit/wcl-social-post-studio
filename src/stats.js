@@ -160,6 +160,13 @@ export function recordToSubmission(record, index) {
       "Photo",
       "Picture",
     ]),
+    scorecardUrl: valueFromRecord(record, [
+      "Scorecard Link",
+      "WCL Scorecard Link",
+      "Scorecard URL",
+      "WCL Link",
+      "Match Link",
+    ]),
     performanceDetails: details,
     batting: { runs: "", balls: "", fours: "", sixes: "", strikeRate: "" },
     bowling: { wickets: "", overs: "", runs: "" },

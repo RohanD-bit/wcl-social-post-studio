@@ -11,6 +11,11 @@ import {
   toTitleCase,
 } from "./stats.js";
 import { downloadPostImage } from "./canvas.js";
+import {
+  canValidateScorecard,
+  requestScorecardValidation,
+  validationSignature,
+} from "./wclValidation.js";
 
 const QUEUE_MODES = [
   ["latest", "Latest weekend"],
@@ -23,6 +28,7 @@ const QUEUE_MODES = [
 
 const DRAFT_STORAGE_KEY = "wcl-social-post-studio:drafts:v1";
 const UI_STORAGE_KEY = "wcl-social-post-studio:ui:v1";
+const VALIDATION_STORAGE_KEY = "wcl-social-post-studio:validation:v1";
 const EDITABLE_FIELDS = [
   "status",
   "template",
@@ -35,6 +41,7 @@ const EDITABLE_FIELDS = [
   "team",
   "opponent",
   "playerPhotoUrl",
+  "scorecardUrl",
   "performanceDetails",
   "homeScore",
   "awayScore",
@@ -222,7 +229,76 @@ function SubmissionList({
   );
 }
 
-function ReviewDesk({ selected, updateSelected }) {
+function ScorecardCheck({ selected, validation, isLoading, isStale, canValidate, onValidate }) {
+  const status = validation?.status ?? "idle";
+  const statusText = {
+    error: "Could not check",
+    idle: "Not checked",
+    match: "Matched",
+    mismatch: "Mismatch",
+    needs_review: "Needs review",
+    not_found: "Scorecard not found",
+  }[status];
+  const summary =
+    validation?.summary ??
+    "Compare the submitted performance details against the WCL scorecard for this match.";
+
+  return (
+    <div className={`scorecard-check ${status}`}>
+      <div className="scorecard-check-header">
+        <div>
+          <p className="section-kicker">WCL scorecard validation</p>
+          <h3>Performance check</h3>
+        </div>
+        <span>{isLoading ? "Checking..." : statusText}</span>
+      </div>
+
+      <p className="scorecard-summary">
+        {isStale ? "Stats changed after the last check. Recheck before posting." : summary}
+      </p>
+
+      <div className="scorecard-actions">
+        <button onClick={onValidate} disabled={!canValidate || isLoading}>
+          {isLoading ? "Checking WCL..." : validation ? "Recheck scorecard" : "Check scorecard"}
+        </button>
+        {validation?.scorecardUrl && (
+          <a href={validation.scorecardUrl} target="_blank" rel="noreferrer">
+            Open scorecard
+          </a>
+        )}
+      </div>
+
+      {!canValidate && (
+        <p className="scorecard-hint">
+          Add player, date, teams, and performance details. A direct scorecard link helps when WCL search cannot find it.
+        </p>
+      )}
+
+      {validation?.checks?.length > 0 && (
+        <div className="check-list">
+          {validation.checks.map((check) => (
+            <div className={`check-row ${check.ok ? "ok" : "bad"}`} key={check.field}>
+              <strong>{check.label}</strong>
+              <span>Form: {check.formValue || "-"}</span>
+              <span>WCL: {check.scorecardValue || "-"}</span>
+              <b>{check.ok ? "OK" : "Fix"}</b>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewDesk({
+  selected,
+  updateSelected,
+  validation,
+  validationLoading,
+  validationStale,
+  canValidate,
+  validateSelected,
+}) {
   function updateField(key, value) {
     updateSelected({ ...selected, [key]: value });
   }
@@ -276,6 +352,7 @@ function ReviewDesk({ selected, updateSelected }) {
           <Field label="Away score" value={selected.awayScore} onChange={(value) => updateField("awayScore", value)} />
           <Field label="Division" value={selected.division} onChange={(value) => updateField("division", value)} />
           <Field label="Result" value={selected.result} onChange={(value) => updateField("result", value)} />
+          <Field label="Scorecard link" value={selected.scorecardUrl} onChange={(value) => updateField("scorecardUrl", value)} />
         </div>
       </div>
 
@@ -319,16 +396,28 @@ function ReviewDesk({ selected, updateSelected }) {
         </div>
       </div>
 
+      <ScorecardCheck
+        selected={selected}
+        validation={validation}
+        isLoading={validationLoading}
+        isStale={validationStale}
+        canValidate={canValidate}
+        onValidate={validateSelected}
+      />
+
       <div className="verification-strip">
         <a
-          href={`https://www.wclinc.com/?q=${encodeURIComponent(
-            `${selected.gameDate} ${selected.homeTeam} ${selected.awayTeam}`,
-          )}`}
+          href="https://www.wclinc.com/wclinc/listMatches.do?league=0&clubId=670"
           target="_blank"
           rel="noreferrer"
         >
-          Open WCL search
+          Open WCL matches
         </a>
+        {selected.scorecardUrl && (
+          <a href={selected.scorecardUrl} target="_blank" rel="noreferrer">
+            Open scorecard link
+          </a>
+        )}
         {selected.playerPhotoUrl && (
           <a href={selected.playerPhotoUrl} target="_blank" rel="noreferrer">
             Open player photo
@@ -419,6 +508,10 @@ function PublishKit({ selected, caption, copyCaption }) {
 export default function App() {
   const [submissions, setSubmissions] = useState(SAMPLE_SUBMISSIONS);
   const [drafts, setDrafts] = useState(() => loadStoredJson(DRAFT_STORAGE_KEY, {}));
+  const [validationResults, setValidationResults] = useState(() =>
+    loadStoredJson(VALIDATION_STORAGE_KEY, {}),
+  );
+  const [validationLoading, setValidationLoading] = useState({});
   const [selectedId, setSelectedId] = useState(
     () => loadStoredJson(UI_STORAGE_KEY, {}).selectedId ?? SAMPLE_SUBMISSIONS[0].id,
   );
@@ -442,11 +535,20 @@ export default function App() {
   }, [selectedId, submissions, visibleRows]);
 
   const caption = useMemo(() => buildCaption(selected), [selected]);
+  const selectedValidationSignature = useMemo(() => validationSignature(selected), [selected]);
+  const selectedValidation = validationResults[selected.id];
+  const selectedValidationStale =
+    Boolean(selectedValidation?.signature) && selectedValidation.signature !== selectedValidationSignature;
+  const selectedCanValidate = canValidateScorecard(selected);
 
   useEffect(() => {
     draftsRef.current = drafts;
     saveStoredJson(DRAFT_STORAGE_KEY, drafts);
   }, [drafts]);
+
+  useEffect(() => {
+    saveStoredJson(VALIDATION_STORAGE_KEY, validationResults);
+  }, [validationResults]);
 
   useEffect(() => {
     saveStoredJson(UI_STORAGE_KEY, {
@@ -461,6 +563,16 @@ export default function App() {
       setSelectedId(visibleRows[0].id);
     }
   }, [visibleRows, selectedId]);
+
+  useEffect(() => {
+    if (!selected?.id || !selectedCanValidate) return undefined;
+    const cached = validationResults[selected.id];
+    if (cached?.signature === selectedValidationSignature && cached.status !== "error") return undefined;
+    const timer = window.setTimeout(() => {
+      validateSubmission(selected, { quiet: true });
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [selected?.id, selectedValidationSignature, selectedCanValidate]);
 
   async function refreshSheet({ quiet = false } = {}) {
     if (!quiet) setSourceStatus("Loading Google Sheet...");
@@ -503,6 +615,47 @@ export default function App() {
       }
       return { ...current, [next.id]: patch };
     });
+  }
+
+  async function validateSubmission(submission = selected, { quiet = false } = {}) {
+    if (!canValidateScorecard(submission)) return;
+    const signature = validationSignature(submission);
+    if (!quiet) {
+      setValidationResults((current) => ({
+        ...current,
+        [submission.id]: {
+          status: "idle",
+          summary: "Checking WCL scorecard...",
+          checks: [],
+          signature,
+        },
+      }));
+    }
+    setValidationLoading((current) => ({ ...current, [submission.id]: true }));
+    try {
+      const result = await requestScorecardValidation(submission);
+      setValidationResults((current) => ({
+        ...current,
+        [submission.id]: {
+          ...result,
+          signature,
+          checkedAt: new Date().toISOString(),
+        },
+      }));
+    } catch (error) {
+      setValidationResults((current) => ({
+        ...current,
+        [submission.id]: {
+          status: "error",
+          summary: error.message || "Could not validate this scorecard right now.",
+          checks: [],
+          signature,
+          checkedAt: new Date().toISOString(),
+        },
+      }));
+    } finally {
+      setValidationLoading((current) => ({ ...current, [submission.id]: false }));
+    }
   }
 
   function handleCsv(file) {
@@ -601,7 +754,15 @@ export default function App() {
           visibleLimit={visibleLimit}
           setVisibleLimit={setVisibleLimit}
         />
-        <ReviewDesk selected={selected} updateSelected={updateSelected} />
+        <ReviewDesk
+          selected={selected}
+          updateSelected={updateSelected}
+          validation={selectedValidation}
+          validationLoading={Boolean(validationLoading[selected.id])}
+          validationStale={selectedValidationStale}
+          canValidate={selectedCanValidate}
+          validateSelected={() => validateSubmission(selected)}
+        />
         <PublishKit selected={selected} caption={caption} copyCaption={copyCaption} />
       </section>
     </main>
