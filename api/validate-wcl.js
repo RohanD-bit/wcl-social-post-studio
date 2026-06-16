@@ -1,4 +1,4 @@
-import { validateSubmission } from "./wcl-validation-core.js";
+import { formatValidationError, validateSubmission } from "./wcl-validation-core.js";
 
 async function readJsonBody(request) {
   if (request.body && typeof request.body === "object" && !Buffer.isBuffer(request.body)) {
@@ -35,10 +35,6 @@ export default async function handler(request, response) {
     const result = await validateSubmission(body.submission ?? body);
     response.status(200).json(result);
   } catch (error) {
-    response.status(200).json({
-      status: "error",
-      summary: error.message || "Could not validate this scorecard right now.",
-      checks: [],
-    });
+    response.status(200).json(formatValidationError(error));
   }
 }

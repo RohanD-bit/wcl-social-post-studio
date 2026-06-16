@@ -1,4 +1,4 @@
-import { validateSubmission } from "./api/wcl-validation-core.js";
+import { formatValidationError, validateSubmission } from "./api/wcl-validation-core.js";
 
 function readRequestBody(request) {
   return new Promise((resolve, reject) => {
@@ -32,11 +32,7 @@ function localWclApi() {
           const result = await validateSubmission(body.submission ?? body);
           sendJson(response, 200, result);
         } catch (error) {
-          sendJson(response, 200, {
-            status: "error",
-            summary: error.message || "Could not validate this scorecard right now.",
-            checks: [],
-          });
+          sendJson(response, 200, formatValidationError(error));
         }
       });
     },

@@ -12,6 +12,34 @@ const FIELD_LABELS = {
   "bowling.wickets": "Wickets",
 };
 
+class WclFetchError extends Error {
+  constructor(statusCode, url) {
+    super(`WCL blocked the app from reading ${url}.`);
+    this.name = "WclFetchError";
+    this.code = statusCode === 403 ? "WCL_FORBIDDEN" : "WCL_FETCH_FAILED";
+    this.statusCode = statusCode;
+    this.url = url;
+  }
+}
+
+export function formatValidationError(error) {
+  if (error?.code === "WCL_FORBIDDEN") {
+    return {
+      status: "blocked",
+      summary:
+        "WCL blocked the automatic scorecard lookup. Open WCL matches, copy the exact scorecard link into Scorecard link, then recheck. If it still shows blocked, WCL is blocking direct scorecard reads too.",
+      checks: [],
+      blockedUrl: error.url,
+    };
+  }
+
+  return {
+    status: "error",
+    summary: error?.message || "Could not validate this scorecard right now.",
+    checks: [],
+  };
+}
+
 function decodeHtml(value) {
   const entities = {
     amp: "&",
@@ -95,7 +123,7 @@ async function fetchPage(url) {
     },
   });
   if (!response.ok) {
-    throw new Error(`WCL returned ${response.status} for ${url}`);
+    throw new WclFetchError(response.status, url);
   }
   return response.text();
 }

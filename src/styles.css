@@ -478,7 +478,8 @@ p {
 }
 
 .scorecard-check.not_found,
-.scorecard-check.needs_review {
+.scorecard-check.needs_review,
+.scorecard-check.blocked {
   border-color: rgba(189, 125, 24, 0.45);
   background: #fff8ea;
 }

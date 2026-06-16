@@ -242,6 +242,7 @@ function SubmissionList({
 function ScorecardCheck({ selected, validation, isLoading, isStale, canValidate, onValidate }) {
   const status = validation?.status ?? "idle";
   const statusText = {
+    blocked: "WCL blocked lookup",
     error: "Could not check",
     idle: "Not checked",
     match: "Matched",
@@ -281,6 +282,13 @@ function ScorecardCheck({ selected, validation, isLoading, isStale, canValidate,
       {!canValidate && (
         <p className="scorecard-hint">
           Add player, date, teams, and performance details. A direct scorecard link helps when WCL search cannot find it.
+        </p>
+      )}
+
+      {status === "blocked" && (
+        <p className="scorecard-hint">
+          This is a WCL website access block, not a stats mismatch. Try pasting the exact scorecard URL in the Scorecard
+          link field, then recheck.
         </p>
       )}
 
