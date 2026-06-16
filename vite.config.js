@@ -17,24 +17,29 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+async function handleValidationRequest(request, response) {
+  if (request.method !== "POST") {
+    sendJson(response, 405, { status: "error", summary: "Use POST for WCL validation." });
+    return;
+  }
+
+  try {
+    const body = JSON.parse((await readRequestBody(request)) || "{}");
+    const result = await validateSubmission(body.submission ?? body);
+    sendJson(response, 200, result);
+  } catch (error) {
+    sendJson(response, 200, formatValidationError(error));
+  }
+}
+
 function localWclApi() {
   return {
     name: "local-wcl-validation-api",
     configureServer(server) {
-      server.middlewares.use("/api/validate-wcl", async (request, response) => {
-        if (request.method !== "POST") {
-          sendJson(response, 405, { status: "error", summary: "Use POST for WCL validation." });
-          return;
-        }
-
-        try {
-          const body = JSON.parse((await readRequestBody(request)) || "{}");
-          const result = await validateSubmission(body.submission ?? body);
-          sendJson(response, 200, result);
-        } catch (error) {
-          sendJson(response, 200, formatValidationError(error));
-        }
-      });
+      server.middlewares.use("/api/validate-wcl", handleValidationRequest);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use("/api/validate-wcl", handleValidationRequest);
     },
   };
 }

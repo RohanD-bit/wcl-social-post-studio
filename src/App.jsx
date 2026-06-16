@@ -242,6 +242,7 @@ function SubmissionList({
 function ScorecardCheck({ selected, validation, isLoading, isStale, canValidate, onValidate }) {
   const status = validation?.status ?? "idle";
   const statusText = {
+    api_unavailable: "Backend not running",
     blocked: "WCL blocked lookup",
     error: "Could not check",
     idle: "Not checked",
@@ -289,6 +290,13 @@ function ScorecardCheck({ selected, validation, isLoading, isStale, canValidate,
         <p className="scorecard-hint">
           This is a WCL website access block, not a stats mismatch. Try pasting the exact scorecard URL in the Scorecard
           link field, then recheck.
+        </p>
+      )}
+
+      {status === "api_unavailable" && (
+        <p className="scorecard-hint">
+          The current localhost preview is static, so it cannot run the scorecard checker. Push to Vercel to test the
+          backend checker, or run the Vite dev server locally.
         </p>
       )}
 

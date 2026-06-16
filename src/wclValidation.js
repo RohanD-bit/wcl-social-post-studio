@@ -46,7 +46,20 @@ export async function requestScorecardValidation(submission) {
   });
 
   if (!response.ok) {
-    throw new Error(`Validation request failed with ${response.status}.`);
+    if ([404, 405, 501].includes(response.status)) {
+      return {
+        status: "api_unavailable",
+        summary:
+          "The scorecard checker backend is not running on this localhost preview. Test this on the deployed Vercel app, or run the app with the Vite dev server so /api/validate-wcl is available.",
+        checks: [],
+      };
+    }
+
+    return {
+      status: "error",
+      summary: `Validation request failed with ${response.status}.`,
+      checks: [],
+    };
   }
 
   return response.json();
