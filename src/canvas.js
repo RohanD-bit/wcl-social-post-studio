@@ -85,6 +85,26 @@ function statLine(context, label, value, x, y, width, accent = "#2aa8ef") {
   context.stroke();
 }
 
+function drawT20StatCard(context, label, value, x, y, width, height) {
+  context.save();
+  context.fillStyle = "rgba(7, 24, 46, 0.72)";
+  roundRect(context, x, y, width, height, 10);
+  context.fill();
+  context.strokeStyle = "#2aa8ef";
+  context.lineWidth = 5;
+  context.beginPath();
+  context.moveTo(x + 18, y + 18);
+  context.lineTo(x + width - 18, y + 18);
+  context.stroke();
+  context.fillStyle = "#2aa8ef";
+  context.font = "900 23px Arial";
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
+  context.fillText(label.toUpperCase(), x + 22, y + 54);
+  fitText(context, String(value || "-"), x + width / 2, y + height * 0.66, width - 36, 56, 900, "#ffffff");
+  context.restore();
+}
+
 export function drawPost(context, submission) {
   context.canvas.width = 1080;
   context.canvas.height = 1350;
@@ -110,65 +130,78 @@ function drawT20(context, submission) {
     context.fill();
   }
 
-  drawLogo(context, 92, 92, 56, "WCL", "#c2413f");
+  drawLogo(context, 86, 86, 50, "WCL", "#c2413f");
   context.fillStyle = "rgba(255,255,255,0.5)";
-  context.font = "900 54px Arial";
-  context.textAlign = "center";
-  context.fillText("WCL T20", 540, 96);
-  context.fillStyle = "#ffffff";
-  context.font = "900 124px Arial";
+  context.font = "900 46px Arial";
   context.textAlign = "left";
-  context.fillText("PLAYER", 68, 330);
-  context.fillText("MATCH", 154, 448);
-  context.fillStyle = "#4fc3ff";
-  context.font = "900 50px Arial";
-  context.fillText("OF", 70, 380);
-  context.fillText("THE", 70, 438);
+  context.fillText("WCL T20", 158, 96);
+  context.fillStyle = "rgba(255,255,255,0.72)";
+  context.font = "900 28px Arial";
+  context.textAlign = "right";
+  context.fillText((submission.division || "Division TBD").toUpperCase(), 1010, 96);
 
-  drawPlayerSilhouette(context, 570, 270, 430, 620, "t20", submission.player);
+  context.fillStyle = "#ffffff";
+  context.font = "900 108px Arial";
+  context.textAlign = "left";
+  context.fillText("PLAYER", 72, 250);
+  context.fillText("OF THE", 72, 354);
+  context.fillText("MATCH", 72, 458);
 
+  drawPlayerSilhouette(context, 650, 188, 348, 500, "t20", submission.player);
+
+  context.save();
+  context.translate(72, 548);
+  context.transform(1, 0, -0.12, 1, 0, 0);
   context.fillStyle = "#1594ed";
-  roundRect(context, 68, 504, 560, 96, 8);
+  roundRect(context, 0, 0, 560, 96, 8);
   context.fill();
-  fitText(context, toTitleCase(submission.player), 348, 552, 500, 44, 900, "#ffffff");
+  fitText(context, toTitleCase(submission.player), 280, 50, 500, 44, 900, "#ffffff");
+  context.restore();
 
-  statLine(context, "Runs", submission.batting.runs, 72, 720, 280);
-  statLine(context, "Balls", submission.batting.balls, 386, 720, 260);
-  statLine(context, "Wickets", submission.bowling.wickets, 72, 858, 280);
-  statLine(context, "Overs", submission.bowling.overs, 386, 858, 260);
+  const statY = 725;
+  const statWidth = 218;
+  const statGap = 20;
+  drawT20StatCard(context, "Runs", submission.batting.runs, 72, statY, statWidth, 142);
+  drawT20StatCard(context, "Balls", submission.batting.balls, 72 + (statWidth + statGap), statY, statWidth, 142);
+  drawT20StatCard(context, "Wickets", submission.bowling.wickets, 72 + (statWidth + statGap) * 2, statY, statWidth, 142);
+  drawT20StatCard(context, "Overs", submission.bowling.overs, 72 + (statWidth + statGap) * 3, statY, statWidth, 142);
 
+  context.save();
+  context.translate(72, 925);
+  context.transform(1, 0, -0.1, 1, 0, 0);
   context.fillStyle = "#1594ed";
-  roundRect(context, 72, 1025, 620, 78, 8);
+  roundRect(context, 0, 0, 620, 78, 8);
   context.fill();
-  fitText(context, (submission.result || "Result pending").toUpperCase(), 382, 1065, 560, 32, 900, "#ffffff");
+  fitText(context, (submission.result || "Result pending").toUpperCase(), 310, 40, 560, 32, 900, "#ffffff");
+  context.restore();
 
   context.fillStyle = "#1585d6";
-  roundRect(context, 104, 1208, 374, 78, 10);
+  roundRect(context, 104, 1138, 374, 78, 10);
   context.fill();
-  roundRect(context, 602, 1208, 374, 78, 10);
+  roundRect(context, 602, 1138, 374, 78, 10);
   context.fill();
-  drawLogo(context, 100, 1247, 50, submission.homeTeam, "#a3a337");
-  drawLogo(context, 980, 1247, 50, submission.awayTeam, "#2f8a55");
+  drawLogo(context, 100, 1177, 50, submission.homeTeam, "#a3a337");
+  drawLogo(context, 980, 1177, 50, submission.awayTeam, "#2f8a55");
   context.fillStyle = "#ffffff";
   context.font = "900 26px Arial";
   context.textAlign = "left";
-  context.fillText(submission.homeTeam.toUpperCase() || "HOME TEAM", 184, 1238);
+  context.fillText((submission.homeTeam || "Home team").toUpperCase(), 184, 1168);
   context.font = "800 24px Arial";
-  context.fillText(submission.homeScore || "Score TBD", 184, 1272);
+  context.fillText(submission.homeScore || "Score TBD", 184, 1202);
   context.textAlign = "right";
   context.font = "900 26px Arial";
-  context.fillText(submission.awayTeam.toUpperCase() || "AWAY TEAM", 896, 1238);
+  context.fillText((submission.awayTeam || "Away team").toUpperCase(), 896, 1168);
   context.font = "800 24px Arial";
-  context.fillText(submission.awayScore || "Score TBD", 896, 1272);
+  context.fillText(submission.awayScore || "Score TBD", 896, 1202);
   context.fillStyle = "#ffffff";
   context.font = "900 68px Arial";
   context.textAlign = "center";
-  context.fillText("VS", 540, 1264);
+  context.fillText("VS", 540, 1194);
   context.font = "900 28px Arial";
   context.fillText(
-    `${formatDate(submission.gameDate).toUpperCase()}  |  ${submission.ground.toUpperCase() || "VENUE TBD"}`,
+    `${formatDate(submission.gameDate).toUpperCase()}  |  ${(submission.ground || "Venue TBD").toUpperCase()}`,
     540,
-    1330,
+    1298,
   );
 }
 

@@ -620,41 +620,66 @@ p {
 }
 
 .t20-preview {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  gap: 12px;
   background: linear-gradient(130deg, #07182e 0%, #12213a 58%, #1f513c 100%);
   color: #ffffff;
+  padding: 26px;
 }
 
-.t20-preview header {
-  position: absolute;
-  top: 7%;
-  left: 7%;
-  display: grid;
+.t20-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
 }
 
-.t20-preview header span {
+.t20-topline span {
   color: rgba(255, 255, 255, 0.5);
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 900;
+  text-transform: uppercase;
 }
 
-.t20-preview header strong {
-  width: 240px;
+.t20-topline em {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.t20-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.03fr) minmax(132px, 0.9fr);
+  gap: 14px;
+  align-items: end;
+  min-height: 0;
+}
+
+.t20-hero h3 {
+  margin: 0;
   font-size: 42px;
   font-weight: 900;
   line-height: 0.94;
+  text-transform: uppercase;
 }
 
 .t20-figure {
-  position: absolute;
-  right: 5%;
-  bottom: 14%;
+  position: relative;
   display: grid;
   place-items: center;
-  width: 46%;
-  aspect-ratio: 0.72;
+  min-height: 214px;
+  width: 100%;
+  max-height: 100%;
   border-radius: 45% 45% 14% 14%;
   background: linear-gradient(180deg, #f3f5f7 0 22%, #dd3138 22% 46%, #151b25 46% 100%);
-  box-shadow: -24px 24px 70px rgba(0, 0, 0, 0.28);
+  box-shadow: -18px 18px 46px rgba(0, 0, 0, 0.3);
 }
 
 .t20-figure span,
@@ -671,48 +696,53 @@ p {
 }
 
 .name-ribbon {
-  position: absolute;
-  top: 34%;
-  left: 6%;
-  width: 56%;
+  position: relative;
+  z-index: 1;
+  width: min(100%, 330px);
   transform: skewX(-10deg);
   background: #1995f2;
-  padding: 13px;
-  font-size: 22px;
+  padding: 12px 14px;
+  font-size: 21px;
   font-weight: 900;
+  line-height: 1.05;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .t20-stats {
-  position: absolute;
-  left: 7%;
-  bottom: 18%;
   display: grid;
-  grid-template-columns: 80px 92px;
-  gap: 8px 18px;
-  align-items: end;
-  width: 48%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.t20-stats span {
+.t20-stat {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  min-height: 82px;
+  border-top: 2px solid var(--sky);
+  background: rgba(7, 24, 46, 0.52);
+  padding: 9px 8px;
+}
+
+.t20-stat span {
   color: var(--sky);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
   text-transform: uppercase;
 }
 
-.t20-stats b {
-  border-bottom: 2px solid var(--sky);
-  padding-bottom: 5px;
-  font-size: 38px;
+.t20-stat b {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 29px;
+  font-weight: 900;
   line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .t20-preview footer {
-  position: absolute;
-  left: 7%;
-  bottom: 8%;
-  width: 58%;
   transform: skewX(-8deg);
   background: #1995f2;
   padding: 10px 12px;
@@ -917,18 +947,56 @@ p {
     min-width: 0;
   }
 
-  .t20-preview header strong {
-    width: 190px;
-    font-size: 32px;
+  .t20-preview {
+    gap: 8px;
+    padding: 14px;
+  }
+
+  .t20-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(104px, 0.72fr);
+    gap: 8px;
+  }
+
+  .t20-hero h3 {
+    font-size: 27px;
+  }
+
+  .t20-figure {
+    min-height: 128px;
+  }
+
+  .t20-figure span {
+    width: 46px;
+    height: 46px;
+    font-size: 18px;
+  }
+
+  .name-ribbon {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 16px;
   }
 
   .t20-stats {
-    grid-template-columns: 70px 70px;
-    width: 50%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .t20-stats b {
-    font-size: 30px;
+  .t20-stat {
+    min-height: 50px;
+    padding: 7px 5px;
+  }
+
+  .t20-stat span {
+    font-size: 9px;
+  }
+
+  .t20-stat b {
+    font-size: 20px;
+  }
+
+  .t20-preview footer {
+    padding: 8px 9px;
+    font-size: 12px;
   }
 
   .forty-preview aside {

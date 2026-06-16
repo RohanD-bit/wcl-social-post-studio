@@ -457,23 +457,40 @@ function PosterPreview({ submission }) {
 
   return (
     <div className="poster-preview t20-preview">
-      <header>
+      <div className="t20-topline">
         <span>WCL T20</span>
-        <strong>PLAYER OF THE MATCH</strong>
-      </header>
-      <div className="t20-figure">
-        <span>{initials(submission.player)}</span>
+        <em>{submission.division || "Division TBD"}</em>
+      </div>
+      <div className="t20-hero">
+        <h3>
+          Player
+          <br />
+          of the
+          <br />
+          Match
+        </h3>
+        <div className="t20-figure">
+          <span>{initials(submission.player)}</span>
+        </div>
       </div>
       <div className="name-ribbon">{toTitleCase(submission.player || "Player")}</div>
       <div className="t20-stats">
-        <span>Runs</span>
-        <b>{submission.batting.runs || "-"}</b>
-        <span>Balls</span>
-        <b>{submission.batting.balls || "-"}</b>
-        <span>Wickets</span>
-        <b>{submission.bowling.wickets || "-"}</b>
-        <span>Overs</span>
-        <b>{submission.bowling.overs || "-"}</b>
+        <div className="t20-stat">
+          <span>Runs</span>
+          <b>{submission.batting.runs || "-"}</b>
+        </div>
+        <div className="t20-stat">
+          <span>Balls</span>
+          <b>{submission.batting.balls || "-"}</b>
+        </div>
+        <div className="t20-stat">
+          <span>Wickets</span>
+          <b>{submission.bowling.wickets || "-"}</b>
+        </div>
+        <div className="t20-stat">
+          <span>Overs</span>
+          <b>{submission.bowling.overs || "-"}</b>
+        </div>
       </div>
       <footer>{submission.result || "Result pending"}</footer>
     </div>
