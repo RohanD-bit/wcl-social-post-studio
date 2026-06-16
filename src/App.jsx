@@ -749,14 +749,24 @@ export default function App() {
         </div>
         <div className="header-actions">
           <button onClick={() => refreshSheet()}>Refresh Sheet</button>
-          <button onClick={() => fileInputRef.current?.click()}>Import CSV</button>
+          <button
+            title="Choose a .csv file exported from Google Sheets."
+            onClick={() => {
+              setSourceStatus(
+                "Choose a .csv file exported from Google Sheets: File > Download > Comma-separated values (.csv).",
+              );
+              fileInputRef.current?.click();
+            }}
+          >
+            Import CSV file
+          </button>
           <button className="primary" onClick={() => downloadPostImage(selected)}>
             Download Image
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv"
             hidden
             onChange={(event) => {
               const file = event.target.files?.[0];
