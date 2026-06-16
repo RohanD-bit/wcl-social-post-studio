@@ -774,7 +774,10 @@ p {
 }
 
 .forty-preview main {
-  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(150px, 1fr) minmax(54px, auto) auto auto;
+  gap: 12px;
+  min-height: 0;
   padding: 28px 22px;
 }
 
@@ -801,8 +804,7 @@ p {
   position: relative;
   display: grid;
   place-items: center;
-  height: 42%;
-  margin-top: 16px;
+  min-height: 0;
   overflow: hidden;
   border-radius: 6px;
   background: linear-gradient(180deg, #aad57a, #5d8f3f);
@@ -821,21 +823,32 @@ p {
 }
 
 .forty-preview h3 {
-  margin-top: 16px;
-  font-size: 26px;
+  display: grid;
+  place-items: center;
+  min-height: 54px;
+  max-height: 76px;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--poster-name-size, 26px);
   font-weight: 900;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
   text-align: center;
+  word-break: break-word;
 }
 
 .poster-stat-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 14px;
+  margin: 0;
 }
 
 .poster-stat-row b {
+  display: grid;
+  place-items: center;
   min-height: 56px;
+  overflow: hidden;
   background: #ffffff;
   padding: 10px 6px;
   font-size: 17px;
@@ -845,10 +858,6 @@ p {
 }
 
 .forty-preview footer {
-  position: absolute;
-  right: 22px;
-  bottom: 24px;
-  left: 22px;
   border-top: 2px solid #1f2937;
   padding-top: 12px;
   font-size: 14px;

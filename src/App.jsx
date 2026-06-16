@@ -148,6 +148,16 @@ function TextArea({ label, value, onChange, readOnly = false }) {
   );
 }
 
+function posterNameStyle(value) {
+  const length = toTitleCase(value || "Player").length;
+  let size = 26;
+  if (length > 22) size = 23;
+  if (length > 30) size = 20;
+  if (length > 40) size = 17;
+  if (length > 52) size = 15;
+  return { "--poster-name-size": `${size}px` };
+}
+
 function SubmissionList({
   rows,
   visibleRows,
@@ -442,7 +452,7 @@ function PosterPreview({ submission }) {
             <div className="pitch" />
             <div className="player-badge">{initials(submission.player)}</div>
           </div>
-          <h3>{toTitleCase(submission.player || "Player")}</h3>
+          <h3 style={posterNameStyle(submission.player)}>{toTitleCase(submission.player || "Player")}</h3>
           <div className="poster-stat-row">
             <b>
               {submission.batting.runs || "-"} ({submission.batting.balls || "-"})

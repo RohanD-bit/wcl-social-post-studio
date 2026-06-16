@@ -12,15 +12,96 @@ function roundRect(context, x, y, width, height, radius) {
 
 function fitText(context, text, x, y, maxWidth, startSize, weight = 900, color = "#0f172a") {
   let size = startSize;
+  let fittedText = String(text ?? "");
   context.fillStyle = color;
   context.textAlign = "center";
   context.textBaseline = "middle";
   do {
     context.font = `${weight} ${size}px Arial`;
-    if (context.measureText(text).width <= maxWidth) break;
+    if (context.measureText(fittedText).width <= maxWidth) break;
     size -= 2;
   } while (size >= 18);
-  context.fillText(text, x, y);
+  while (context.measureText(fittedText).width > maxWidth && fittedText.length > 4) {
+    fittedText = `${fittedText.slice(0, -4).trimEnd()}...`;
+  }
+  context.fillText(fittedText, x, y);
+}
+
+function splitLongWord(context, word, maxWidth) {
+  const parts = [];
+  let current = "";
+  for (const char of word) {
+    const next = `${current}${char}`;
+    if (current && context.measureText(next).width > maxWidth) {
+      parts.push(current);
+      current = char;
+    } else {
+      current = next;
+    }
+  }
+  if (current) parts.push(current);
+  return parts;
+}
+
+function wrapText(context, text, maxWidth) {
+  const words = String(text ?? "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+
+  words.forEach((word) => {
+    if (context.measureText(word).width > maxWidth) {
+      if (current) {
+        lines.push(current);
+        current = "";
+      }
+      lines.push(...splitLongWord(context, word, maxWidth));
+      return;
+    }
+
+    const next = current ? `${current} ${word}` : word;
+    if (current && context.measureText(next).width > maxWidth) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  });
+
+  if (current) lines.push(current);
+  return lines;
+}
+
+function fitTextBlock(context, text, x, y, width, height, startSize, minSize, maxLines, weight = 900, color = "#0f172a") {
+  let size = startSize;
+  let lines = [];
+
+  while (size >= minSize) {
+    context.font = `${weight} ${size}px Arial`;
+    lines = wrapText(context, text, width);
+    const lineHeight = size * 1.08;
+    if (lines.length <= maxLines && lines.length * lineHeight <= height) break;
+    size -= 2;
+  }
+
+  context.font = `${weight} ${size}px Arial`;
+  lines = wrapText(context, text, width).slice(0, maxLines);
+  if (lines.length === maxLines) {
+    while (context.measureText(`${lines[lines.length - 1]}...`).width > width && lines[lines.length - 1].length > 3) {
+      lines[lines.length - 1] = lines[lines.length - 1].slice(0, -1).trimEnd();
+    }
+    if (wrapText(context, text, width).length > maxLines) {
+      lines[lines.length - 1] = `${lines[lines.length - 1]}...`;
+    }
+  }
+
+  const lineHeight = size * 1.08;
+  const firstY = y + height / 2 - ((lines.length - 1) * lineHeight) / 2;
+  context.fillStyle = color;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  lines.forEach((line, index) => {
+    context.fillText(line, x + width / 2, firstY + index * lineHeight);
+  });
 }
 
 function drawLogo(context, x, y, radius, label, color) {
@@ -247,8 +328,8 @@ function drawForty(context, submission) {
   context.fillRect(646, 250, 92, 620);
   drawPlayerSilhouette(context, 560, 332, 300, 430, "forty", submission.player);
 
-  drawLogo(context, 438, 960, 48, submission.team, "#1f7a55");
-  fitText(context, toTitleCase(submission.player), 700, 966, 450, 46, 900, "#0b0f19");
+  drawLogo(context, 438, 962, 48, submission.team, "#1f7a55");
+  fitTextBlock(context, toTitleCase(submission.player), 500, 916, 500, 96, 46, 22, 3, 900, "#0b0f19");
 
   context.fillStyle = "#ffffff";
   roundRect(context, 366, 1040, 310, 110, 4);
