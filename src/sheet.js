@@ -19,6 +19,93 @@ export function mapRecordsToSubmissions(records) {
     .filter((submission) => submission.player || submission.gameDate || submission.performanceDetails);
 }
 
+function sheetRange(sheetName) {
+  return `'${String(sheetName).replace(/'/g, "''")}'!A:ZZ`;
+}
+
+async function readGoogleError(response, fallback) {
+  const details = await response.json().catch(() => null);
+  return details?.error?.message || fallback;
+}
+
+export function valuesToRecords(values) {
+  const rows = Array.isArray(values) ? values : [];
+  const headers = rows.shift() || [];
+  return rows.map((row) => {
+    const record = {};
+    headers.forEach((header, index) => {
+      record[header] = row[index] ?? "";
+    });
+    return record;
+  });
+}
+
+export async function listSpreadsheetTabs(accessToken, spreadsheetId) {
+  if (!accessToken || !spreadsheetId) {
+    throw new Error("Choose a spreadsheet first.");
+  }
+
+  const params = new URLSearchParams({
+    fields: "properties(title),sheets(properties(sheetId,title,index,gridProperties(rowCount,columnCount)))",
+  });
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const message = await readGoogleError(response, `Google Sheets returned ${response.status}.`);
+    if (response.status === 401) {
+      const error = new Error("Google session expired. Reconnect Google Sheet to choose a tab.");
+      error.code = "auth_expired";
+      throw error;
+    }
+    throw new Error(message);
+  }
+
+  const payload = await response.json();
+  return {
+    title: payload.properties?.title ?? "Untitled spreadsheet",
+    tabs: (payload.sheets ?? [])
+      .map((sheet) => sheet.properties)
+      .filter(Boolean)
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0)),
+  };
+}
+
+export async function loadGoogleSheetWithToken(accessToken, options = {}) {
+  if (!accessToken) {
+    throw new Error("Connect Google Sheet first.");
+  }
+
+  const spreadsheetId = options.spreadsheetId || SHEET_ID;
+  const sheetName = options.sheetName || SHEET_NAME;
+  const range = encodeURIComponent(sheetRange(sheetName));
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const message = await readGoogleError(response, `Google Sheets returned ${response.status}.`);
+    if (response.status === 401) {
+      const error = new Error("Google session expired. Reconnect the sheet to refresh data.");
+      error.code = "auth_expired";
+      throw error;
+    }
+    if (response.status === 403) {
+      throw new Error(message || "This Google account cannot read that response sheet.");
+    }
+    throw new Error(message || `Google Sheets returned ${response.status}.`);
+  }
+
+  const payload = await response.json();
+  return mapRecordsToSubmissions(valuesToRecords(payload.values));
+}
+
 export function loadGoogleSheet() {
   return new Promise((resolve, reject) => {
     const callbackName = `wclSheetCallback_${Date.now()}`;

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SAMPLE_SUBMISSIONS, STATUS_LABELS, TEMPLATE_LABELS } from "./data.js";
-import { csvToSubmissions, loadGoogleSheet } from "./sheet.js";
+import { EMPTY_SUBMISSION, STATUS_LABELS, TEMPLATE_LABELS } from "./data.js";
+import { csvToSubmissions, listSpreadsheetTabs, loadGoogleSheetWithToken } from "./sheet.js";
+import { requestGoogleSheetsAccessToken } from "./googleAuth.js";
+import { pickGoogleSpreadsheet } from "./googlePicker.js";
 import {
   buildCaption,
   dateValue,
@@ -29,6 +31,8 @@ const QUEUE_MODES = [
 const DRAFT_STORAGE_KEY = "wcl-social-post-studio:drafts:v1";
 const UI_STORAGE_KEY = "wcl-social-post-studio:ui:v1";
 const VALIDATION_STORAGE_KEY = "wcl-social-post-studio:validation:v1";
+const CONNECTION_STORAGE_KEY = "wcl-social-post-studio:connection:v1";
+const ROW_CACHE_STORAGE_KEY = "wcl-social-post-studio:rows:v1";
 const EDITABLE_FIELDS = [
   "status",
   "template",
@@ -586,25 +590,115 @@ function PublishKit({ selected, caption, canvaPackage, copyCaption, copyCanvaPac
   );
 }
 
+function TabPicker({
+  tabs,
+  selectedFile,
+  onChooseTab,
+  onCancel,
+  isLoading,
+}) {
+  return (
+    <section className="sheet-picker">
+      <div className="sheet-picker-header">
+        <div>
+          <p className="section-kicker">Google Sheets</p>
+          <h2>Choose a tab</h2>
+          <p>
+            {selectedFile?.name || "Selected spreadsheet"} has multiple tabs. Pick the response tab to import.
+          </p>
+        </div>
+        <button onClick={onCancel}>Cancel</button>
+      </div>
+
+      <div className="sheet-list">
+        {isLoading && <p className="sheet-empty">Loading spreadsheet tabs...</p>}
+
+        {!isLoading &&
+          tabs.map((tab) => (
+            <button className="sheet-option" key={tab.sheetId ?? tab.title} onClick={() => onChooseTab(tab)}>
+              <span>
+                <strong>{tab.title || "Untitled tab"}</strong>
+                <small>
+                  {tab.gridProperties?.rowCount || "?"} rows · {tab.gridProperties?.columnCount || "?"} columns
+                </small>
+              </span>
+              <b>Load</b>
+            </button>
+          ))}
+
+        {!isLoading && tabs.length === 0 && <p className="sheet-empty">No tabs found in that spreadsheet.</p>}
+      </div>
+    </section>
+  );
+}
+
+function ConnectWorkspace({ onConnect, onImport, isConnecting }) {
+  return (
+    <section className="connect-workspace">
+      <div className="connect-card">
+        <p className="section-kicker">Google Sheet</p>
+        <h2>Connect submissions</h2>
+        <p>
+          Sign in with Google, browse your Drive for a spreadsheet, then load the tab that contains player submissions.
+        </p>
+        <div className="connect-actions">
+          <button className="primary" onClick={onConnect} disabled={isConnecting}>
+            {isConnecting ? "Connecting..." : "Connect Google Sheet"}
+          </button>
+          <button onClick={onImport}>Import CSV file</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
-  const [submissions, setSubmissions] = useState(SAMPLE_SUBMISSIONS);
-  const [drafts, setDrafts] = useState(() => loadStoredJson(DRAFT_STORAGE_KEY, {}));
+  const initialConnection = loadStoredJson(CONNECTION_STORAGE_KEY, {});
+  const initialDrafts = loadStoredJson(DRAFT_STORAGE_KEY, {});
+  const initialRowCache = loadStoredJson(ROW_CACHE_STORAGE_KEY, {});
+  const cachedBaseRows = Array.isArray(initialRowCache.rows) ? initialRowCache.rows : [];
+  const cachedRows = mergeDrafts(cachedBaseRows, initialDrafts);
+  const [submissions, setSubmissions] = useState(cachedRows);
+  const [drafts, setDrafts] = useState(initialDrafts);
   const [validationResults, setValidationResults] = useState(() =>
     loadStoredJson(VALIDATION_STORAGE_KEY, {}),
   );
   const [validationLoading, setValidationLoading] = useState({});
   const [selectedId, setSelectedId] = useState(
-    () => loadStoredJson(UI_STORAGE_KEY, {}).selectedId ?? SAMPLE_SUBMISSIONS[0].id,
+    () => loadStoredJson(UI_STORAGE_KEY, {}).selectedId ?? "",
   );
   const [queueMode, setQueueMode] = useState(() => loadStoredJson(UI_STORAGE_KEY, {}).queueMode ?? "latest");
   const [search, setSearch] = useState(() => loadStoredJson(UI_STORAGE_KEY, {}).search ?? "");
   const [visibleLimit, setVisibleLimit] = useState(24);
-  const [sourceStatus, setSourceStatus] = useState("Loading real submissions from Google Sheets...");
-  const [lastChecked, setLastChecked] = useState("");
-  const lastSignatureRef = useRef("");
+  const [sourceStatus, setSourceStatus] = useState(
+    cachedRows.length && initialConnection.mode === "google" && initialConnection.spreadsheetName
+      ? `Showing saved rows from ${initialConnection.spreadsheetName} / ${
+          initialConnection.sheetName || "selected tab"
+        }. Reconnect Google Sheet to refresh.`
+      : cachedRows.length && initialConnection.mode === "csv"
+        ? `Showing saved rows from ${initialConnection.spreadsheetName || "the previous CSV import"}.`
+      : cachedRows.length
+        ? `Showing saved rows from the previous session.`
+        : initialConnection.lastConnected
+      ? `Reconnect Google Sheet to load ${
+          initialConnection.spreadsheetName
+            ? `${initialConnection.spreadsheetName} / ${initialConnection.sheetName || "a tab"}`
+            : "live submissions"
+        }. Last connected ${initialConnection.lastConnected}.`
+      : "Connect Google Sheet to load live submissions, or import a CSV file.",
+  );
+  const [lastChecked, setLastChecked] = useState(initialRowCache.lastChecked ?? "");
+  const [sheetAccessToken, setSheetAccessToken] = useState("");
+  const [sheetConnection, setSheetConnection] = useState(initialConnection);
+  const [isConnectingSheet, setIsConnectingSheet] = useState(false);
+  const [pickerMode, setPickerMode] = useState("closed");
+  const [pickerTabs, setPickerTabs] = useState([]);
+  const [pickerFile, setPickerFile] = useState(null);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const lastSignatureRef = useRef(JSON.stringify(cachedRows));
   const fileInputRef = useRef(null);
   const draftsRef = useRef(drafts);
-  const baseRowsRef = useRef(SAMPLE_SUBMISSIONS);
+  const baseRowsRef = useRef(cachedBaseRows);
 
   const visibleRows = useMemo(
     () => getVisibleRows(submissions, queueMode, search),
@@ -612,16 +706,20 @@ export default function App() {
   );
 
   const selected = useMemo(() => {
-    return submissions.find((row) => row.id === selectedId) ?? visibleRows[0] ?? submissions[0];
+    return submissions.find((row) => row.id === selectedId) ?? visibleRows[0] ?? submissions[0] ?? EMPTY_SUBMISSION;
   }, [selectedId, submissions, visibleRows]);
 
   const caption = useMemo(() => buildCaption(selected), [selected]);
   const canvaPackage = useMemo(() => buildCanvaPackage(selected, caption), [selected, caption]);
   const selectedValidationSignature = useMemo(() => validationSignature(selected), [selected]);
-  const selectedValidation = validationResults[selected.id];
+  const selectedValidation = selected.id === EMPTY_SUBMISSION.id ? undefined : validationResults[selected.id];
   const selectedValidationStale =
     Boolean(selectedValidation?.signature) && selectedValidation.signature !== selectedValidationSignature;
-  const selectedCanValidate = canValidateScorecard(selected);
+  const selectedCanValidate = selected.id !== EMPTY_SUBMISSION.id && canValidateScorecard(selected);
+  const hasSubmissions = submissions.length > 0;
+  const hasConnectedSheet = Boolean(sheetConnection.spreadsheetId && sheetConnection.sheetName);
+  const hasSheetSession = Boolean(sheetAccessToken && hasConnectedSheet);
+  const isChoosingSheet = pickerMode !== "closed";
 
   useEffect(() => {
     draftsRef.current = drafts;
@@ -631,6 +729,10 @@ export default function App() {
   useEffect(() => {
     saveStoredJson(VALIDATION_STORAGE_KEY, validationResults);
   }, [validationResults]);
+
+  useEffect(() => {
+    saveStoredJson(CONNECTION_STORAGE_KEY, sheetConnection);
+  }, [sheetConnection]);
 
   useEffect(() => {
     saveStoredJson(UI_STORAGE_KEY, {
@@ -647,7 +749,7 @@ export default function App() {
   }, [visibleRows, selectedId]);
 
   useEffect(() => {
-    if (!selected?.id || !selectedCanValidate) return undefined;
+    if (!selected?.id || selected.id === EMPTY_SUBMISSION.id || !selectedCanValidate) return undefined;
     const cached = validationResults[selected.id];
     if (cached?.signature === selectedValidationSignature && cached.status !== "error") return undefined;
     const timer = window.setTimeout(() => {
@@ -656,10 +758,23 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [selected?.id, selectedValidationSignature, selectedCanValidate]);
 
-  async function refreshSheet({ quiet = false } = {}) {
+  async function refreshSheet({ quiet = false, token = sheetAccessToken, source = sheetConnection } = {}) {
+    if (!token) {
+      setSourceStatus("Connect Google Sheet before refreshing live submissions.");
+      return;
+    }
+    if (!source?.spreadsheetId || !source?.sheetName) {
+      setSourceStatus("Choose a Google Sheet before refreshing live submissions.");
+      setPickerMode("files");
+      return;
+    }
+
     if (!quiet) setSourceStatus("Loading Google Sheet...");
     try {
-      const rows = await loadGoogleSheet();
+      const rows = await loadGoogleSheetWithToken(token, {
+        spreadsheetId: source.spreadsheetId,
+        sheetName: source.sheetName,
+      });
       baseRowsRef.current = rows;
       const merged = mergeDrafts(rows, draftsRef.current);
       const signature = JSON.stringify(merged);
@@ -669,23 +784,154 @@ export default function App() {
         second: "2-digit",
       });
       setLastChecked(checked);
+      saveStoredJson(ROW_CACHE_STORAGE_KEY, {
+        rows,
+        source,
+        lastChecked: checked,
+        cachedAt: new Date().toISOString(),
+      });
       if (signature !== lastSignatureRef.current) {
         lastSignatureRef.current = signature;
         setSubmissions(merged);
       }
-      setSourceStatus(`Live Google Sheet connected. ${rows.length} rows loaded. Last checked ${checked}.`);
+      setSelectedId((current) => (merged.some((row) => row.id === current) ? current : merged[0]?.id ?? ""));
+      setSourceStatus(
+        `Loaded ${rows.length} rows from ${source.spreadsheetName || "Google Sheet"} / ${
+          source.sheetName
+        }. Last checked ${checked}.`,
+      );
     } catch (error) {
-      setSourceStatus(`${error.message} Use Import CSV if the sheet is not public.`);
+      if (error.code === "auth_expired") {
+        setSheetAccessToken("");
+      }
+      setSourceStatus(`${error.message} You can reconnect Google Sheet or import a CSV file.`);
     }
   }
 
   useEffect(() => {
-    refreshSheet();
-    const timer = window.setInterval(() => refreshSheet({ quiet: true }), 60000);
+    if (!hasSheetSession) return undefined;
+    const timer = window.setInterval(
+      () => refreshSheet({ quiet: true, token: sheetAccessToken, source: sheetConnection }),
+      60000,
+    );
     return () => window.clearInterval(timer);
-  }, []);
+  }, [hasSheetSession, sheetAccessToken, sheetConnection.spreadsheetId, sheetConnection.sheetName]);
+
+  async function connectGoogleSheet() {
+    setIsConnectingSheet(true);
+    setSourceStatus(sheetAccessToken ? "Opening Google Drive picker..." : "Opening Google sign-in...");
+    try {
+      const token = sheetAccessToken || (await requestGoogleSheetsAccessToken());
+      const connectedAt = new Date().toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      setSheetAccessToken(token);
+      if (!sheetAccessToken && hasConnectedSheet) {
+        const source = { ...sheetConnection, mode: "google", lastConnected: connectedAt };
+        setSheetConnection(source);
+        await refreshSheet({ token, source });
+        return;
+      }
+
+      setSheetConnection((current) => ({ ...current, mode: "google", lastConnected: connectedAt }));
+      const file = await pickGoogleSpreadsheet(token);
+      if (!file) {
+        setSourceStatus("Google Sheet selection was canceled.");
+        return;
+      }
+      await choosePickedSpreadsheet(file, token);
+    } catch (error) {
+      setSourceStatus(error.message || "Could not connect Google Sheet.");
+    } finally {
+      setIsConnectingSheet(false);
+    }
+  }
+
+  function handleGoogleError(error, fallback) {
+    if (error.code === "auth_expired") {
+      setSheetAccessToken("");
+      setPickerMode("closed");
+    }
+    setSourceStatus(error.message || fallback);
+  }
+
+  async function choosePickedSpreadsheet(file, token = sheetAccessToken) {
+    if (!token) return;
+    setPickerFile(file);
+    setPickerTabs([]);
+    setPickerLoading(true);
+    setSourceStatus(`Opening ${file.name || "spreadsheet"}...`);
+    try {
+      const details = await listSpreadsheetTabs(token, file.id);
+      const tabs = details.tabs ?? [];
+      setPickerTabs(tabs);
+      const responseTab = tabs.find((tab) => /form responses/i.test(tab.title || ""));
+      if (responseTab || tabs.length === 1) {
+        await loadChosenSheet({ file, tab: responseTab || tabs[0], token });
+        return;
+      }
+      setPickerMode("tabs");
+      setSourceStatus(`Choose a tab from ${file.name || details.title || "that spreadsheet"}.`);
+    } catch (error) {
+      handleGoogleError(error, "Could not open that spreadsheet.");
+    } finally {
+      setPickerLoading(false);
+    }
+  }
+
+  async function loadChosenSheet({ file, tab, token = sheetAccessToken }) {
+    if (!file?.id || !tab?.title || !token) return;
+    const connectedAt = new Date().toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const source = {
+      mode: "google",
+      lastConnected: connectedAt,
+      spreadsheetId: file.id,
+      spreadsheetName: file.name || "Google Sheet",
+      spreadsheetUrl: file.webViewLink || "",
+      sheetName: tab.title,
+    };
+    setSheetConnection(source);
+    setPickerMode("closed");
+    setPickerFile(null);
+    setPickerTabs([]);
+    await refreshSheet({ token, source });
+  }
+
+  function closeSheetChooser() {
+    setPickerMode("closed");
+    setPickerLoading(false);
+  }
+
+  function removeGoogleSheet() {
+    setSheetAccessToken("");
+    setSheetConnection({});
+    setSubmissions([]);
+    setSelectedId("");
+    setLastChecked("");
+    setPickerMode("closed");
+    setPickerTabs([]);
+    setPickerFile(null);
+    baseRowsRef.current = [];
+    lastSignatureRef.current = "";
+    saveStoredJson(ROW_CACHE_STORAGE_KEY, {
+      rows: [],
+      source: null,
+      lastChecked: "",
+      cachedAt: "",
+    });
+    setSourceStatus("Google Sheet removed. Connect a Google Sheet or import a CSV file to load submissions.");
+  }
 
   function updateSelected(next) {
+    if (!next?.id || next.id === EMPTY_SUBMISSION.id) return;
     setSubmissions((current) => current.map((row) => (row.id === next.id ? next : row)));
     setDrafts((current) => {
       const base = baseRowsRef.current.find((row) => row.id === next.id) ?? selected;
@@ -700,7 +946,7 @@ export default function App() {
   }
 
   async function validateSubmission(submission = selected, { quiet = false } = {}) {
-    if (!canValidateScorecard(submission)) return;
+    if (!submission?.id || submission.id === EMPTY_SUBMISSION.id || !canValidateScorecard(submission)) return;
     const signature = validationSignature(submission);
     if (!quiet) {
       setValidationResults((current) => ({
@@ -740,6 +986,13 @@ export default function App() {
     }
   }
 
+  function openCsvPicker() {
+    setSourceStatus(
+      "Choose a .csv file exported from Google Sheets: File > Download > Comma-separated values (.csv).",
+    );
+    fileInputRef.current?.click();
+  }
+
   function handleCsv(file) {
     const reader = new FileReader();
     reader.onload = () => {
@@ -751,7 +1004,29 @@ export default function App() {
       baseRowsRef.current = rows;
       const merged = mergeDrafts(rows, draftsRef.current);
       setSubmissions(merged);
-      setSelectedId(merged[0].id);
+      setSelectedId(merged[0]?.id ?? "");
+      setSheetAccessToken("");
+      setLastChecked("");
+      setPickerMode("closed");
+      setPickerTabs([]);
+      setPickerFile(null);
+      const csvSource = {
+        mode: "csv",
+        lastConnected: new Date().toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+        spreadsheetName: file.name,
+      };
+      setSheetConnection(csvSource);
+      saveStoredJson(ROW_CACHE_STORAGE_KEY, {
+        rows,
+        source: csvSource,
+        lastChecked: "",
+        cachedAt: new Date().toISOString(),
+      });
       setSourceStatus(`Loaded ${rows.length} rows from ${file.name}.`);
     };
     reader.onerror = () => setSourceStatus("Could not read that CSV file.");
@@ -795,19 +1070,27 @@ export default function App() {
           <p className="header-subtitle">Review weekly submissions, clean stats, and prepare post-ready graphics.</p>
         </div>
         <div className="header-actions">
-          <button onClick={() => refreshSheet()}>Refresh Sheet</button>
-          <button
-            title="Choose a .csv file exported from Google Sheets."
-            onClick={() => {
-              setSourceStatus(
-                "Choose a .csv file exported from Google Sheets: File > Download > Comma-separated values (.csv).",
-              );
-              fileInputRef.current?.click();
-            }}
-          >
+          <button className="primary" onClick={connectGoogleSheet} disabled={isConnectingSheet}>
+            {hasSheetSession
+              ? "Change Google Sheet"
+              : hasConnectedSheet
+                ? "Reconnect Google Sheet"
+                : sheetAccessToken
+                  ? "Choose Google Sheet"
+                  : "Connect Google Sheet"}
+          </button>
+          <button onClick={() => refreshSheet()} disabled={!hasSheetSession || isConnectingSheet}>
+            Refresh Sheet
+          </button>
+          {hasConnectedSheet && (
+            <button className="danger" onClick={removeGoogleSheet}>
+              Remove Google Sheet
+            </button>
+          )}
+          <button title="Choose a .csv file exported from Google Sheets." onClick={openCsvPicker}>
             Import CSV file
           </button>
-          <button className="primary" onClick={() => downloadPostImage(selected)}>
+          <button onClick={() => downloadPostImage(selected)} disabled={!hasSubmissions}>
             Download Image
           </button>
           <input
@@ -828,49 +1111,67 @@ export default function App() {
         <span>{sourceStatus}</span>
         <div className="status-flags">
           <strong>Workflow saved in this browser</strong>
-          {lastChecked && <strong>Auto-refreshes every 60 seconds</strong>}
+          {hasConnectedSheet && <strong>{sheetConnection.spreadsheetName} / {sheetConnection.sheetName}</strong>}
+          {hasSheetSession && <strong>Auto-refreshes every 60 seconds</strong>}
+          {hasConnectedSheet && !hasSheetSession && <strong>Reconnect to refresh</strong>}
+          {!hasSheetSession && sheetConnection.mode === "csv" && <strong>CSV mode</strong>}
+          {lastChecked && <strong>Last checked {lastChecked}</strong>}
         </div>
       </section>
 
-      <section className="metrics">
-        {Object.entries(metrics).map(([status, count]) => (
-          <div className="metric" key={status}>
-            <span>{STATUS_LABELS[status]}</span>
-            <strong>{count}</strong>
-          </div>
-        ))}
-      </section>
+      {isChoosingSheet ? (
+        <TabPicker
+          tabs={pickerTabs}
+          selectedFile={pickerFile}
+          onChooseTab={(tab) => loadChosenSheet({ file: pickerFile, tab })}
+          onCancel={closeSheetChooser}
+          isLoading={pickerLoading}
+        />
+      ) : hasSubmissions ? (
+        <>
+          <section className="metrics">
+            {Object.entries(metrics).map(([status, count]) => (
+              <div className="metric" key={status}>
+                <span>{STATUS_LABELS[status]}</span>
+                <strong>{count}</strong>
+              </div>
+            ))}
+          </section>
 
-      <section className="workspace">
-        <SubmissionList
-          rows={submissions}
-          visibleRows={visibleRows}
-          selectedId={selected.id}
-          onSelect={setSelectedId}
-          queueMode={queueMode}
-          setQueueMode={setQueueMode}
-          search={search}
-          setSearch={setSearch}
-          visibleLimit={visibleLimit}
-          setVisibleLimit={setVisibleLimit}
-        />
-        <ReviewDesk
-          selected={selected}
-          updateSelected={updateSelected}
-          validation={selectedValidation}
-          validationLoading={Boolean(validationLoading[selected.id])}
-          validationStale={selectedValidationStale}
-          canValidate={selectedCanValidate}
-          validateSelected={() => validateSubmission(selected)}
-        />
-        <PublishKit
-          selected={selected}
-          caption={caption}
-          canvaPackage={canvaPackage}
-          copyCaption={copyCaption}
-          copyCanvaPackage={copyCanvaPackage}
-        />
-      </section>
+          <section className="workspace">
+            <SubmissionList
+              rows={submissions}
+              visibleRows={visibleRows}
+              selectedId={selected.id}
+              onSelect={setSelectedId}
+              queueMode={queueMode}
+              setQueueMode={setQueueMode}
+              search={search}
+              setSearch={setSearch}
+              visibleLimit={visibleLimit}
+              setVisibleLimit={setVisibleLimit}
+            />
+            <ReviewDesk
+              selected={selected}
+              updateSelected={updateSelected}
+              validation={selectedValidation}
+              validationLoading={Boolean(validationLoading[selected.id])}
+              validationStale={selectedValidationStale}
+              canValidate={selectedCanValidate}
+              validateSelected={() => validateSubmission(selected)}
+            />
+            <PublishKit
+              selected={selected}
+              caption={caption}
+              canvaPackage={canvaPackage}
+              copyCaption={copyCaption}
+              copyCanvaPackage={copyCanvaPackage}
+            />
+          </section>
+        </>
+      ) : (
+        <ConnectWorkspace onConnect={connectGoogleSheet} onImport={openCsvPicker} isConnecting={isConnectingSheet} />
+      )}
     </main>
   );
 }

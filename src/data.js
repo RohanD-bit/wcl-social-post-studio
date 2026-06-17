@@ -13,6 +13,38 @@ export const TEMPLATE_LABELS = {
 export const SHEET_ID = "1W_HTrAllc7MPMJhmBFe-MWi30gCsYmNbZ0WkRsD5k_U";
 export const SHEET_NAME = "Form Responses 1";
 
+export const EMPTY_SUBMISSION = {
+  id: "empty",
+  status: "new",
+  template: "t20",
+  gameDate: "",
+  ground: "",
+  homeTeam: "",
+  awayTeam: "",
+  division: "",
+  player: "",
+  team: "",
+  opponent: "",
+  playerPhotoUrl: "",
+  scorecardUrl: "",
+  performanceDetails: "",
+  batting: {
+    runs: "",
+    balls: "",
+    fours: "",
+    sixes: "",
+    strikeRate: "",
+  },
+  bowling: {
+    wickets: "",
+    overs: "",
+    runs: "",
+  },
+  homeScore: "",
+  awayScore: "",
+  result: "",
+};
+
 export const SAMPLE_SUBMISSIONS = [
   {
     id: 101,
